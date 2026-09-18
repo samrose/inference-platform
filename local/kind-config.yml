@@ -1,0 +1,40 @@
+# local/kind-config.yml — the local tier's cluster definition.
+# Pinning: the node image is pinned by digest; change it deliberately via an ADR.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: inference
+
+# Tell containerd on every node to read per-registry config from certs.d.
+# `just _connect-registry` writes /etc/containerd/certs.d/localhost:5001/hosts.toml
+# into each node so pulls from localhost:5001 resolve to the kind-registry container.
+containerdConfigPatches:
+  - |-
+    [plugins."io.containerd.grpc.v1.cri".registry]
+      config_path = "/etc/containerd/certs.d"
+
+nodes:
+  - role: control-plane
+    # Take the full image string for your chosen Kubernetes minor from the
+    # kind v0.32.0 release notes ("Images built for this release").
+    image: kindest/node:v1.36.1@sha256:3489c7674813ba5d8b1a9977baea8a6e553784dab7b84759d1014dbd78f7ebd5
+    # Label the control plane so a gateway/ingress can be pinned to it later.
+    kubeadmConfigPatches:
+      - |
+        kind: InitConfiguration
+        nodeRegistration:
+          kubeletExtraArgs:
+            node-labels: "ingress-ready=true"
+    # Host ports for the gateway (step 5). Unused until then; harmless now.
+    extraPortMappings:
+      - containerPort: 80
+        hostPort: 8080
+        protocol: TCP
+      - containerPort: 443
+        hostPort: 8443
+        protocol: TCP
+
+  - role: worker
+    image: kindest/node:v1.36.1@sha256:3489c7674813ba5d8b1a9977baea8a6e553784dab7b84759d1014dbd78f7ebd5
+
+  - role: worker
+    image: kindest/node:v1.36.1@sha256:3489c7674813ba5d8b1a9977baea8a6e553784dab7b84759d1014dbd78f7ebd5
