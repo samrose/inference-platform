@@ -83,12 +83,22 @@ status:
 # prove the registry round-trips: push an image, run it in the cluster
 # (no --platform: Docker pulls the host arch, which is what the kind nodes run)
 smoke:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    img="localhost:{{reg_port}}/busybox:1.36"
     docker pull busybox:1.36
-    docker tag busybox:1.36 "localhost:{{reg_port}}/busybox:1.36"
-    docker push "localhost:{{reg_port}}/busybox:1.36"
-    kubectl run smoke --rm -i --restart=Never \
-        --image="localhost:{{reg_port}}/busybox:1.36" -- echo "registry round-trip OK"
-
+    docker tag busybox:1.36 "$img"
+    docker push "$img"
+    kubectl delete pod smoke --ignore-not-found >/dev/null
+    kubectl run smoke --restart=Never --image="$img" -- echo "registry round-trip OK"
+    if ! kubectl wait pod/smoke --for=jsonpath='{.status.phase}'=Succeeded --timeout=60s; then
+        echo "--- smoke pod did not succeed; describe follows ---"
+        kubectl describe pod smoke | sed -n '/Events:/,$p'
+        kubectl delete pod smoke --ignore-not-found >/dev/null
+        exit 1
+    fi
+    kubectl logs smoke
+    kubectl delete pod smoke >/dev/null
 # ---- chart quality gates (filled in as step 1 progresses) -----------------------
 
 # static checks: lint, render, validate against the cluster's API schemas
