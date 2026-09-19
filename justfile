@@ -117,3 +117,40 @@ check: lint test
 
 _k8s-version:
     @kubectl version -o json | jq -r '.serverVersion.gitVersion' | sed 's/^v//'
+
+# ---- mock engine ------------------------------------------------------------------
+
+mock_image := "localhost:" + reg_port + "/mock-engine"
+
+# build the mock engine for the local arch and push it; records the digest
+mock-push:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    tag="{{mock_image}}:dev"
+    docker build -t "$tag" mock-engine
+    docker push "$tag"
+    digest=$(docker inspect --format '{{{{index .RepoDigests 0}}' "$tag" | cut -d@ -f2)
+    echo "$digest" > local/mock-engine.digest
+    echo "pushed {{mock_image}}@$digest"
+
+# run the mock engine in the cluster by digest and exercise every endpoint
+mock-smoke:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    img="{{mock_image}}@$(cat local/mock-engine.digest)"
+    kubectl delete pod mock --ignore-not-found >/dev/null
+    kubectl run mock --restart=Never --image="$img" --port=8000 \
+        --env STARTUP_DELAY_SECONDS=5 --env TTFT_MS=100 --env TPOT_MS=10
+    kubectl wait pod/mock --for=condition=Ready --timeout=60s
+    kubectl port-forward pod/mock 18000:8000 >/dev/null 2>&1 & pf=$!
+    trap 'kill $pf; kubectl delete pod mock >/dev/null' EXIT
+    sleep 2
+    echo "--- health (expect 503 until startup delay elapses, then 200)"
+    for i in 1 2 3 4 5 6; do curl -s -o /dev/null -w "%{http_code}\n" localhost:18000/health; sleep 1; done
+    echo "--- streamed completion"
+    curl -sN localhost:18000/v1/chat/completions -H 'content-type: application/json' \
+        -d '{"model":"mock/mock-8b","stream":true,"max_tokens":5,"messages":[{"role":"user","content":"hi"}]}'
+    echo "--- admin: force queue depth"
+    curl -s -X POST localhost:18000/admin/state -H 'content-type: application/json' -d '{"waiting": 12, "kv_cache_usage": 0.85}'
+    echo; echo "--- metrics (vllm:* only)"
+    curl -s localhost:18000/metrics | grep '^vllm:' | grep -v '_bucket'
