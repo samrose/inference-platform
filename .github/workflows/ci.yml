@@ -1,0 +1,43 @@
+# CI runs the same checks as a laptop, from the flake. See docs/adr/0006.
+# Actions are pinned by commit SHA; the comment carries the tag they resolve from.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  # helm lint, kubeconform, helm unittest — identical to `just check` locally
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31.11.1
+      - uses: nix-community/cache-nix-action@7df957e333c1e5da7721f60227dbba6d06080569 # v7
+        with:
+          primary-key: nix-${{ runner.os }}-${{ hashFiles('flake.lock', 'flake.nix') }}
+          restore-prefixes-first-match: nix-${{ runner.os }}-
+      - run: nix develop .#ci -c just check
+
+  # the mock engine still builds and answers at its edges, no cluster needed
+  mock-image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: docker build -t mock-engine:ci mock-engine
+      - name: health and metrics
+        run: |
+          docker run -d --name mock -p 8000:8000 -e STARTUP_DELAY_SECONDS=2 mock-engine:ci
+          for _ in $(seq 1 30); do
+            if curl -fs -o /dev/null localhost:8000/health; then break; fi
+            sleep 1
+          done
+          curl -fs -o /dev/null localhost:8000/health
+          curl -fs localhost:8000/metrics | grep -q '^vllm:num_requests_waiting'
+          curl -fs localhost:8000/v1/models | grep -q '"object": *"list"'
+      - if: always()
+        run: docker logs mock || true

@@ -1,0 +1,8 @@
+# markdownlint config for README and ADRs
+config:
+  MD013: false   # line length: prose is wrapped by hand at ~78
+  MD033: false   # inline html
+ignores:
+  - .direnv/**
+  - .venv/**
+  - charts/**/*.md

@@ -1,0 +1,70 @@
+# values.yaml — the interface an app team sees.
+#
+# Required: image.repository, image.digest. Everything else has a default that
+# is right for the mock engine and reasonable for a small real model.
+
+model:
+  # Model id the engine reports from /v1/models and uses in metric labels.
+  name: mock/mock-8b
+
+image:
+  # e.g. localhost:5001/mock-engine locally, or a registry path in the cloud.
+  repository: ""
+  # sha256:... — required. Tags are refused so a deploy is always reproducible.
+  digest: ""
+  pullPolicy: IfNotPresent
+
+replicaCount: 1
+
+engine:
+  # Port the engine listens on. vLLM and the mock both default to 8000.
+  port: 8000
+  # Extra args for the engine command, e.g. ["--model", "meta-llama/..."] for vLLM.
+  # The mock needs none.
+  args: []
+  # Extra environment for the engine container. MODEL_NAME is always set from model.name.
+  env: {}
+  # How long the engine is allowed to take to load weights before the pod is
+  # restarted. Sets the startup probe: failureThreshold = ceil(loadTimeoutSeconds / probes.periodSeconds).
+  loadTimeoutSeconds: 600
+
+probes:
+  # Shared by the startup, readiness and liveness probes.
+  path: /health
+  periodSeconds: 5
+  timeoutSeconds: 2
+  # Consecutive failures before a Ready pod is pulled from the Service.
+  readinessFailureThreshold: 3
+  # Consecutive failures before a started pod is restarted. Generous: a busy
+  # engine can be slow to answer /health and a restart drops every request.
+  livenessFailureThreshold: 6
+
+rollout:
+  # Never take a serving pod away before its replacement is Ready.
+  maxSurge: 1
+  # Seconds to keep serving after SIGTERM is scheduled, so in-flight streams
+  # finish and endpoints propagate the removal before the process is stopped.
+  preStopSeconds: 10
+  # Must exceed preStopSeconds plus the longest response you expect to drain.
+  terminationGracePeriodSeconds: 90
+
+service:
+  type: ClusterIP
+  port: 8000
+
+metrics:
+  # Adds prometheus.io/* pod annotations. Part 3 adds a ServiceMonitor.
+  annotations: true
+
+# Only rendered when replicaCount > 1: keeps at least one pod through node drains.
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+# e.g. limits: {nvidia.com/gpu: 1}, requests: {cpu: "4", memory: 16Gi}
+resources: {}
+
+podAnnotations: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}

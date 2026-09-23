@@ -1,0 +1,100 @@
+suite: deployment
+templates:
+  - deployment.yaml
+values:
+  - ./values/ok.yaml
+tests:
+  - it: references the image by digest
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: example.invalid/mock-engine@sha256:0000000000000000000000000000000000000000000000000000000000000000
+
+  - it: refuses a tag
+    set:
+      image.tag: dev
+    asserts:
+      - failedTemplate:
+          errorPattern: image.tag is not supported
+
+  - it: refuses a missing digest
+    set:
+      image.digest: ""
+    asserts:
+      - failedTemplate:
+          errorPattern: image.digest is required
+
+  - it: refuses a digest without the sha256 prefix
+    set:
+      image.digest: abc123
+    asserts:
+      - failedTemplate:
+          errorPattern: must start with sha256
+
+  - it: sizes the startup probe from loadTimeoutSeconds and periodSeconds
+    set:
+      engine.loadTimeoutSeconds: 600
+      probes.periodSeconds: 5
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].startupProbe.failureThreshold
+          value: 120
+      - equal:
+          path: spec.template.spec.containers[0].startupProbe.periodSeconds
+          value: 5
+
+  - it: rounds the startup probe up, never down
+    set:
+      engine.loadTimeoutSeconds: 61
+      probes.periodSeconds: 10
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].startupProbe.failureThreshold
+          value: 7
+
+  - it: never removes a serving pod before its replacement is ready
+    asserts:
+      - equal:
+          path: spec.strategy.rollingUpdate.maxUnavailable
+          value: 0
+      - equal:
+          path: spec.strategy.rollingUpdate.maxSurge
+          value: 1
+
+  - it: drains before stopping
+    set:
+      rollout.preStopSeconds: 10
+      rollout.terminationGracePeriodSeconds: 90
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].lifecycle.preStop.sleep.seconds
+          value: 10
+      - equal:
+          path: spec.template.spec.terminationGracePeriodSeconds
+          value: 90
+
+  - it: always sets MODEL_NAME and passes engine.env through
+    set:
+      model.name: org/model-7b
+      engine.env:
+        STARTUP_DELAY_SECONDS: "15"
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: MODEL_NAME
+            value: org/model-7b
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: STARTUP_DELAY_SECONDS
+            value: "15"
+
+  - it: exposes the engine port as http and annotates it for scraping
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].ports[0].name
+          value: http
+      - equal:
+          path: spec.template.metadata.annotations["prometheus.io/port"]
+          value: "8000"

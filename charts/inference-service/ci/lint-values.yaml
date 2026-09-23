@@ -1,0 +1,5 @@
+# Values used only by `just lint` and CI, so the chart renders without a real digest.
+image:
+  repository: example.invalid/mock-engine
+  digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+replicaCount: 2
