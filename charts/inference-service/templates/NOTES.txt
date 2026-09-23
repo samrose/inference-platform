@@ -1,0 +1,12 @@
+{{ .Release.Name }}: {{ .Values.model.name }} from {{ include "inference-service.image" . }}
+
+Pods become Ready only after {{ .Values.probes.path }} returns 200, and are given
+{{ .Values.engine.loadTimeoutSeconds }}s to get there.
+
+Try it from inside the cluster at
+  http://{{ include "inference-service.fullname" . }}.{{ .Release.Namespace }}.svc:{{ .Values.service.port }}/v1/chat/completions
+
+or from this machine:
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "inference-service.fullname" . }} 18000:{{ .Values.service.port }}
+  curl -sN localhost:18000/v1/chat/completions -H 'content-type: application/json' \
+    -d '{"model":"{{ .Values.model.name }}","stream":true,"max_tokens":5,"messages":[{"role":"user","content":"hi"}]}'

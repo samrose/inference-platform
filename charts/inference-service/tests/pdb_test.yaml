@@ -1,0 +1,22 @@
+suite: pod disruption budget
+templates:
+  - pdb.yaml
+values:
+  - ./values/ok.yaml
+tests:
+  - it: is not rendered for a single replica
+    set:
+      replicaCount: 1
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: keeps one pod available when there are several
+    set:
+      replicaCount: 3
+    asserts:
+      - hasDocuments:
+          count: 1
+      - equal:
+          path: spec.minAvailable
+          value: 1

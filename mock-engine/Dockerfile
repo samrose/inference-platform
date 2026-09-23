@@ -1,8 +1,8 @@
-# Pin the base image by digest. Get it with:
-#   docker pull python:3.12-slim
-#   docker inspect --format '{{index .RepoDigests 0}}' python:3.12-slim
-# On an Apple Silicon host this is the arm64 manifest digest; the multi-arch
-# (index) digest is adopted in step 3 when the cloud tier needs amd64.
+# Pin the base image by its multi-arch index digest, so this FROM line resolves
+# to the right platform on an arm64 laptop and on an amd64 CI runner or GPU
+# node (ADR 0005). Get it with:
+#   docker buildx imagetools inspect python:3.12-slim | head -3
+# The image built from it is still single-arch (the host's) until part 4.
 FROM python:3.12-slim@sha256:2f17fc044b579bab302c2e8054d3a686e2cb9a83de48e70534b94cd8ebbe06a9
 ENV PROMETHEUS_DISABLE_CREATED_SERIES=true
 WORKDIR /app

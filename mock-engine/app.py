@@ -16,6 +16,7 @@ and by POST /admin/state {"waiting": <int>, "kv_cache_usage": <0..1>} which
 forces the scaling signals so autoscaling and alerts can be exercised
 deterministically.
 """
+
 import asyncio
 import json
 import os
@@ -46,6 +47,8 @@ state = {"ready": False, "waiting": 0, "kv_cache_usage": 0.0}
 # ---- vLLM-shaped metrics -----------------------------------------------------
 # Names, labels and histogram buckets follow vLLM's own metric definitions so
 # PromQL written against this mock works unchanged against the real engine.
+# fmt: off
+# Names, labels and buckets are laid out to compare line-for-line with vLLM's.
 reg = CollectorRegistry()
 LABELS = {"model_name": MODEL, "engine": "0"}
 LK = list(LABELS.keys())
@@ -53,7 +56,8 @@ LK = list(LABELS.keys())
 running = Gauge("vllm:num_requests_running", "Requests currently running", LK, registry=reg)
 waiting = Gauge("vllm:num_requests_waiting", "Requests waiting in queue", LK, registry=reg)
 kv_usage = Gauge("vllm:kv_cache_usage_perc", "KV cache usage (0-1)", LK, registry=reg)
-gpu_usage = Gauge("vllm:gpu_cache_usage_perc", "Deprecated alias of kv_cache_usage_perc", LK, registry=reg)
+gpu_usage = Gauge("vllm:gpu_cache_usage_perc", "Deprecated alias of kv_cache_usage_perc",
+                  LK, registry=reg)
 ttft = Histogram(
     "vllm:time_to_first_token_seconds", "Time to first token", LK, registry=reg,
     buckets=(0.001, 0.005, 0.01, 0.02, 0.04, 0.06, 0.08, 0.1, 0.25, 0.5, 0.75,
@@ -74,6 +78,7 @@ prompt_tok = Counter("vllm:prompt_tokens", "Prompt tokens processed", LK, regist
 gen_tok = Counter("vllm:generation_tokens", "Generation tokens produced", LK, registry=reg)
 success = Counter("vllm:request_success", "Successfully finished requests",
                   ["finished_reason", *LK], registry=reg)
+# fmt: on
 
 
 def _sync_gauges() -> None:
@@ -112,8 +117,7 @@ def metrics() -> Response:
 
 @app.get("/v1/models")
 def models() -> dict:
-    return {"object": "list",
-            "data": [{"id": MODEL, "object": "model", "owned_by": "mock"}]}
+    return {"object": "list", "data": [{"id": MODEL, "object": "model", "owned_by": "mock"}]}
 
 
 @app.post("/admin/state")
@@ -179,9 +183,12 @@ async def chat(req: Request):
         "object": "chat.completion",
         "created": int(time.time()),
         "model": MODEL,
-        "choices": [{"index": 0,
-                     "message": {"role": "assistant", "content": text},
-                     "finish_reason": "length"}],
-        "usage": {"prompt_tokens": n_in, "completion_tokens": n_out,
-                  "total_tokens": n_in + n_out},
+        "choices": [
+            {
+                "index": 0,
+                "message": {"role": "assistant", "content": text},
+                "finish_reason": "length",
+            }
+        ],
+        "usage": {"prompt_tokens": n_in, "completion_tokens": n_out, "total_tokens": n_in + n_out},
     }

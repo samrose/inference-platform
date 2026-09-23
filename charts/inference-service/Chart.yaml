@@ -1,0 +1,11 @@
+apiVersion: v2
+name: inference-service
+description: >-
+  One model served by an OpenAI-compatible engine (vLLM, or the mock locally),
+  with probes sized for weight loading and rollouts that keep in-flight
+  requests alive.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+# preStop `sleep` action and startup probes as used here
+kubeVersion: ">=1.30.0-0"
