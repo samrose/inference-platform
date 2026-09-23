@@ -29,11 +29,10 @@ alternatives, the choice, and what would cause the choice to be revisited.
 
 Part 1 is published and tagged `post-1`. The local tier works: a disposable
 kind cluster, a local registry, and the mock engine running in the cluster.
-Part 2, the Helm chart, is in progress; `charts/inference-service/` is empty
-and the `lint`, `test` and `check` recipes fail until it exists.
+Part 2, the Helm chart and CI, is in progress on a branch.
 
 | Part | Post | What it adds | Status |
-|------|------|--------------|--------|
+| ---- | ---- | ------------ | ------ |
 | 1 | [Development environment bootstrapping](https://samrose.github.io/posts/part-1.html) | Pinned tooling, kind cluster, local registry, mock engine | published, `post-1` |
 | 2 | The chart an app team actually uses | Helm chart, probes, rolling updates under load, chart tests | in progress |
 | 3 | Watching it, then scaling it | Prometheus, Grafana, KEDA autoscaling on queue depth | |
@@ -48,6 +47,7 @@ Decisions so far, in `docs/adr/`:
 - [0003](docs/adr/0003-local-registry-with-kind.md) kind with a local OCI registry
 - [0004](docs/adr/0004-mock-engine-scope.md) a mock engine stands in for vLLM
 - [0005](docs/adr/0005-single-arch-local-build.md) local images are built single-arch
+- [0006](docs/adr/0006-ci-from-the-flake.md) CI and pre-commit run the same checks as a laptop, from the flake (proposed)
 
 ## Local development
 
@@ -61,7 +61,10 @@ thing it does not provide.
     just smoke           # push an image through the registry and run it
     just mock-push       # build the mock engine, push it, record its digest
     just mock-smoke      # run the mock in the cluster and hit every endpoint
-    just check           # helm lint + kubeconform + helm unittest (part 2, not yet passing)
+    just hooks           # once per clone: pre-commit hook that runs `just precommit`
+    just fmt             # reformat python, nix and the justfile
+    just check           # everything CI runs: formatting, linters, chart lint/schema/tests
+    just deploy          # install the chart in the local cluster with the last pushed mock digest
     just down            # delete the cluster; `just nuke` also removes the registry
 
 `KUBECONFIG` is scoped to `local/kubeconfig` inside the dev shell, so nothing

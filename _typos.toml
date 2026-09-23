@@ -1,0 +1,7 @@
+[files]
+extend-exclude = ["flake.lock", "local/*.digest", ".direnv", ".venv"]
+
+[default.extend-words]
+# identifiers that are not typos
+tpot = "tpot"
+ttft = "ttft"

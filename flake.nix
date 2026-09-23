@@ -5,13 +5,20 @@
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
   };
 
-  outputs = { self, nixpkgs }:
+  outputs =
+    { nixpkgs, ... }:
     let
-      systems = [ "x86_64-linux" "aarch64-linux" "aarch64-darwin" "x86_64-darwin" ];
+      systems = [
+        "x86_64-linux"
+        "aarch64-linux"
+        "aarch64-darwin"
+        "x86_64-darwin"
+      ];
       forAll = f: nixpkgs.lib.genAttrs systems (system: f nixpkgs.legacyPackages.${system});
     in
     {
-      devShells = forAll (pkgs:
+      devShells = forAll (
+        pkgs:
         let
           # helm with the plugins the chart tests depend on
           helm = pkgs.wrapHelm pkgs.kubernetes-helm {
@@ -29,18 +36,39 @@
           # Tests are skipped only for these two; runtime code is unchanged.
           python312 = pkgs.python312.override {
             packageOverrides = _final: prev: {
-              fastapi = prev.fastapi.overridePythonAttrs (_: { doCheck = false; });
-              prometheus-client = prev.prometheus-client.overridePythonAttrs (_: { doCheck = false; });
+              fastapi = prev.fastapi.overridePythonAttrs (_: {
+                doCheck = false;
+              });
+              prometheus-client = prev.prometheus-client.overridePythonAttrs (_: {
+                doCheck = false;
+              });
             };
           };
-          python = python312.withPackages (ps: with ps; [
-            fastapi
-            uvicorn
-            prometheus-client
-            httpx
-            pyyaml
-            pandas
-          ]);
+          python = python312.withPackages (
+            ps: with ps; [
+              fastapi
+              uvicorn
+              prometheus-client
+              httpx
+              pyyaml
+              pandas
+            ]
+          );
+
+          # linters and formatters: run by `just check` in CI and by the pre-commit hook
+          linters = with pkgs; [
+            actionlint # .github/workflows
+            yamllint
+            ruff # python lint + format
+            hadolint # Dockerfile
+            nixfmt # nix formatting
+            statix # nix anti-patterns
+            deadnix # unused nix bindings
+            shellcheck # bash inside justfile recipes
+            markdownlint-cli2
+            gitleaks # secrets
+            typos # spelling in code and docs
+          ];
 
           tools = with pkgs; [
             # --- step 1: kubernetes core + helm + kind ---
@@ -49,20 +77,20 @@
             kind
             kubeconform
             kustomize
-            docker-client        # CLI only; the daemon comes from the host
+            docker-client # CLI only; the daemon comes from the host
             just
             yq-go
             jq
             python
-            uv                   # for python tools not in nixpkgs (guidellm)
+            uv # for python tools not in nixpkgs (guidellm)
 
             # --- step 2: observability + scaling ---
-            prometheus           # promtool for validating PrometheusRule files
-            grafana-loki         # optional; logcli for local log queries
+            prometheus # promtool for validating PrometheusRule files
+            grafana-loki # optional; logcli for local log queries
 
             # --- step 3: gitops + iac ---
             argocd
-            opentofu             # swap for `terraform` if you accept the unfree license
+            opentofu # swap for `terraform` if you accept the unfree license
             tflint
 
             # --- step 5: policy + ci ---
@@ -77,8 +105,23 @@
           ];
         in
         {
+          # what `just check` needs and nothing else; used by .github/workflows/ci.yml (ADR 0006)
+          ci = pkgs.mkShell {
+            packages =
+              with pkgs;
+              [
+                helm
+                kubeconform
+                just
+                yq-go
+                jq
+                git
+              ]
+              ++ linters;
+          };
+
           default = pkgs.mkShell {
-            packages = tools;
+            packages = tools ++ linters;
 
             shellHook = ''
               export KUBECONFIG="$PWD/local/kubeconfig"
@@ -91,6 +134,7 @@
               echo "  argocd   $(argocd version --client --short 2>/dev/null | cut -d' ' -f2)"
             '';
           };
-        });
+        }
+      );
     };
 }

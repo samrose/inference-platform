@@ -1,0 +1,15 @@
+# yamllint config. Helm templates are Go templates, not YAML, so they are excluded.
+extends: default
+ignore: |
+  charts/*/templates/
+  .direnv/
+  .venv/
+rules:
+  line-length:
+    max: 120
+  document-start: disable
+  comments:
+    min-spaces-from-content: 1
+  truthy:
+    # GitHub Actions uses `on:` as a key
+    check-keys: false
