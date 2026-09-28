@@ -47,7 +47,9 @@ Decisions so far, in `docs/adr/`:
 - [0003](docs/adr/0003-local-registry-with-kind.md) kind with a local OCI registry
 - [0004](docs/adr/0004-mock-engine-scope.md) a mock engine stands in for vLLM
 - [0005](docs/adr/0005-single-arch-local-build.md) local images are built single-arch
-- [0006](docs/adr/0006-ci-from-the-flake.md) CI and pre-commit run the same checks as a laptop, from the flake (proposed)
+- [0006](docs/adr/0006-ci-from-the-flake.md) CI and pre-commit run the same checks as a laptop, from the flake
+- [0007](docs/adr/0007-chart-interface-and-rollout-safety.md) the chart: one model per release, digest-only images, probes sized for weight loading
+- [0008](docs/adr/0008-rollout-and-drain-verified-under-load.md) rollout and drain behaviour is verified under load, from inside the cluster
 
 ## Local development
 
@@ -65,6 +67,8 @@ thing it does not provide.
     just fmt             # reformat python, nix and the justfile
     just check           # everything CI runs: formatting, linters, chart lint/schema/tests
     just deploy          # install the chart in the local cluster with the last pushed mock digest
+    just rollout-test    # replace every pod under load; zero failed requests expected
+    just drain-test      # drain a worker with 2 replicas under load; the PDB keeps one serving
     just down            # delete the cluster; `just nuke` also removes the registry
 
 `KUBECONFIG` is scoped to `local/kubeconfig` inside the dev shell, so nothing
@@ -80,11 +84,11 @@ is what the chart will reference.
     justfile                  every local operation
     local/                    kind config, kubeconfig (ignored), image digests
     mock-engine/              the stand-in for vLLM
-    charts/inference-service/ the chart app teams use (part 2, empty so far)
+    charts/inference-service/ the chart app teams use
+    loadtest/                 in-cluster load generator for rollout and drain tests
     docs/adr/                 architecture decision records
 
-Later parts add `cluster/`, `models/`, `infra/`, `ci/`, `loadtest/`, and
-`chaos/`.
+Later parts add `cluster/`, `models/`, `infra/`, `ci/`, and `chaos/`.
 
 ## The mock engine
 

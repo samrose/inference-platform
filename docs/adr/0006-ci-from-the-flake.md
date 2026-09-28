@@ -1,6 +1,6 @@
 # 0006. CI runs the same checks as a laptop, from the flake
 
-Status: proposed, 2026-09-22
+Status: accepted, 2026-09-22 (merged in PR #1, 2026-09-27)
 
 ## Context
 
