@@ -103,19 +103,19 @@ smoke:
 
 # rewrite files into canonical form; `just lint-fmt` is the check-only version
 fmt:
-    ruff format mock-engine
+    ruff format .
     nixfmt flake.nix
     just --fmt --unstable
 
 # formatting is canonical (no rewrites, fails if `just fmt` would change anything)
 lint-fmt:
-    ruff format --check mock-engine
+    ruff format --check .
     nixfmt --check flake.nix
     just --fmt --check --unstable
 
 # python, nix, dockerfile, yaml, markdown, workflows, spelling, secrets
 lint-repo:
-    ruff check mock-engine
+    ruff check .
     statix check .
     deadnix --fail .
     hadolint mock-engine/Dockerfile
@@ -181,7 +181,7 @@ precommit:
     mapfile -t files < <(git diff --cached --name-only --diff-filter=ACM)
     [ ${#files[@]} -gt 0 ] || exit 0
     has() { printf '%s\n' "${files[@]}" | grep -qE "$1"; }
-    has '\.py$'                    && ruff format --check mock-engine && ruff check mock-engine
+    has '\.py$'                    && ruff format --check . && ruff check .
     has '^flake\.nix$'             && nixfmt --check flake.nix
     has '^justfile$'               && just --fmt --check --unstable
     has '^mock-engine/Dockerfile$' && hadolint mock-engine/Dockerfile
@@ -201,13 +201,78 @@ deploy release="mock":
     helm upgrade --install "{{ release }}" "{{ chart }}" \
         --set image.repository="{{ mock_image }}" \
         --set image.digest="$(cat local/mock-engine.digest)" \
-        --set engine.env.STARTUP_DELAY_SECONDS=15 \
+        --set-string engine.env.STARTUP_DELAY_SECONDS=15 \
         --wait --timeout 3m
     kubectl get pods -l app.kubernetes.io/instance="{{ release }}"
 
 # remove a release installed by `just deploy`
 undeploy release="mock":
     helm uninstall "{{ release }}" --ignore-not-found
+
+# ---- load and resilience (part 2) ----------------------------------------------
+
+# run loadtest/load.py as a pod against a release's Service; pin it to a node with node=
+load release="mock" seconds="120" concurrency="4" node="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    img="{{ mock_image }}@$(cat local/mock-engine.digest)"
+    node="{{ node }}"
+    overrides='{}'
+    [ -z "$node" ] || overrides="{\"spec\":{\"nodeName\":\"$node\"}}"
+    kubectl delete pod load --ignore-not-found --wait >/dev/null
+    kubectl run load --restart=Never --image="$img" --overrides="$overrides" \
+        --env TARGET="http://{{ release }}-inference-service:8000" \
+        --env DURATION_SECONDS="{{ seconds }}" --env CONCURRENCY="{{ concurrency }}" \
+        --command -- python -c "$(cat loadtest/load.py)"
+
+# wait for the load pod to finish and print its counts; exit 1 if any request failed
+_load-result:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # not `kubectl wait`: it never returns for a pod that ends in Failed
+    phase=""
+    for _ in $(seq 1 120); do
+        phase=$(kubectl get pod load -o jsonpath='{.status.phase}')
+        case "$phase" in Succeeded|Failed) break ;; esac
+        sleep 5
+    done
+    ok=0; [ "$phase" = Succeeded ] && ok=1
+    kubectl logs load
+    kubectl delete pod load >/dev/null
+    [ "$ok" = 1 ]
+
+# replace every pod of a release while load runs; the final line of the load log is the verdict
+rollout-test release="mock":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    just load "{{ release }}" 150 4
+    sleep 20
+    echo "--- helm upgrade: a changed env value forces every pod to be replaced"
+    helm upgrade "{{ release }}" "{{ chart }}" --reuse-values \
+        --set-string engine.env.ROLLOUT_MARKER="$(date +%s)" >/dev/null
+    kubectl rollout status deploy/"{{ release }}-inference-service" --timeout=5m
+    just _load-result
+
+# drain the node running the release's first pod while 2 replicas serve under load
+drain-test release="mock":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    helm upgrade "{{ release }}" "{{ chart }}" --reuse-values --set replicaCount=2 \
+        --wait --timeout 3m >/dev/null
+    sel="app.kubernetes.io/instance={{ release }}"
+    echo "--- before"
+    kubectl get pods -l "$sel" -o wide
+    node=$(kubectl get pods -l "$sel" -o jsonpath='{.items[0].spec.nodeName}')
+    other=$(kubectl get nodes -l '!node-role.kubernetes.io/control-plane' -o name | grep -vx "node/$node" | head -1 | cut -d/ -f2)
+    just load "{{ release }}" 150 4 "$other"
+    sleep 20
+    echo "--- kubectl drain $node"
+    kubectl drain "$node" --ignore-daemonsets --delete-emptydir-data --timeout=4m
+    echo "--- after"
+    kubectl get pods -l "$sel" -o wide
+    kubectl uncordon "$node" >/dev/null
+    kubectl get pdb -l "$sel"
+    just _load-result
 
 # ---- helpers --------------------------------------------------------------------
 

@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "title": "inference-service values",
+  "type": "object",
+  "properties": {
+    "model": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "minLength": 1 }
+      },
+      "required": ["name"]
+    },
+    "image": {
+      "type": "object",
+      "properties": {
+        "repository": { "type": "string" },
+        "digest": {
+          "type": "string",
+          "description": "sha256:<64 hex>. Empty is rejected by the template with a clearer message than the schema can give.",
+          "pattern": "^(|sha256:[0-9a-f]{64})$"
+        },
+        "pullPolicy": { "enum": ["Always", "IfNotPresent", "Never"] }
+      },
+      "additionalProperties": false
+    },
+    "replicaCount": { "type": "integer", "minimum": 0 },
+    "engine": {
+      "type": "object",
+      "properties": {
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "args": { "type": "array", "items": { "type": "string" } },
+        "env": {
+          "type": "object",
+          "description": "Values must be strings. A bare number given with --set is stored as a float by Helm and re-rendered differently on the next --reuse-values upgrade, which causes a rollout; use --set-string.",
+          "additionalProperties": { "type": "string" }
+        },
+        "loadTimeoutSeconds": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "probes": {
+      "type": "object",
+      "properties": {
+        "path": { "type": "string", "pattern": "^/" },
+        "periodSeconds": { "type": "integer", "minimum": 1 },
+        "timeoutSeconds": { "type": "integer", "minimum": 1 },
+        "readinessFailureThreshold": { "type": "integer", "minimum": 1 },
+        "livenessFailureThreshold": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "rollout": {
+      "type": "object",
+      "properties": {
+        "maxSurge": { "type": ["integer", "string"] },
+        "preStopSeconds": { "type": "integer", "minimum": 0 },
+        "terminationGracePeriodSeconds": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "podDisruptionBudget": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "minAvailable": { "type": ["integer", "string"] }
+      }
+    }
+  }
+}
