@@ -15,7 +15,7 @@ tests:
       image.tag: dev
     asserts:
       - failedTemplate:
-          errorPattern: image.tag is not supported
+          errorPattern: "additional properties 'tag' not allowed"
 
   - it: refuses a missing digest
     set:
@@ -29,7 +29,7 @@ tests:
       image.digest: abc123
     asserts:
       - failedTemplate:
-          errorPattern: must start with sha256
+          errorPattern: "'abc123' does not match pattern"
 
   - it: sizes the startup probe from loadTimeoutSeconds and periodSeconds
     set:
@@ -98,3 +98,17 @@ tests:
       - equal:
           path: spec.template.metadata.annotations["prometheus.io/port"]
           value: "8000"
+
+  - it: refuses a numeric env value (Helm would re-render it as a float on the next upgrade)
+    set:
+      engine.env.STARTUP_DELAY_SECONDS: 15
+    asserts:
+      - failedTemplate:
+          errorPattern: "/engine/env/STARTUP_DELAY_SECONDS.*got number, want string"
+
+  - it: refuses an unknown image key
+    set:
+      image.tags: dev
+    asserts:
+      - failedTemplate:
+          errorPattern: "additional properties 'tags' not allowed"
